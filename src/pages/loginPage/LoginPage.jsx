@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 
+// استدعاء ملف Supabase اللي عملناه
+import { supabase } from "../../supabase"; // <-- تأكد من صحة هذا المسار 
+
 // استدعاء المكونات الجديدة
 import { TakhatobHeader, TakhatobFooter } from "./components/TakhatobLayout";
 import TakhatobLoginForm from "./components/TakhatobLoginForm";
@@ -28,7 +31,8 @@ export default function LoginPage() {
     return isValid;
   };
 
-  const handleLogin = (e) => {
+  // حولنا الدالة دي لـ async عشان نقدر نكلم السيرفر
+  const handleLogin = async (e) => {
     if (e) e.preventDefault();
     if (!validateLoginForm()) return;
 
@@ -36,22 +40,34 @@ export default function LoginPage() {
     setError("");
     setFormErrors({});
 
-    // محاكاة طلب السيرفر لمدة ثانية
-    setTimeout(() => {
-      setIsLoading(false);
-      
-      const mockUserData = {
-        id: "1",
-        name: "أخصائي التخاطب",
-        role: "therapist",
-        email: email.trim()
-      };
-      
-      if (login) login(mockUserData, "fake_token_12345");
+    try {
+      // الاتصال بـ Supabase للتحقق من بيانات الدخول
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password
+      });
+
+      // لو فيه خطأ (الباسورد غلط أو الإيميل مش موجود)
+      if (authError) {
+        setError("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+        setIsLoading(false);
+        return;
+      }
+
+      // لو الدخول نجح، بنبعت بيانات اليوزر للـ Context
+      if (login && data.session) {
+        login(data.user, data.session.access_token);
+      }
       
       toast.success("تم تسجيل الدخول بنجاح!");
       navigate("/dashboard"); 
-    }, 1000); 
+
+    } catch (err) {
+      console.error(err);
+      setError("حدث خطأ في الاتصال بالسيرفر. تأكد من اتصالك بالإنترنت.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -69,10 +85,6 @@ export default function LoginPage() {
 
   return (
     <>
-      {/* 
-        إضافة أكواد CSS هنا لعمل التدرج اللوني المتحرك
-        بدون الحاجة لمكتبات خارجية وبأعلى أداء ممكن
-      */}
       <style>
         {`
           @keyframes slowGradient {
@@ -88,22 +100,16 @@ export default function LoginPage() {
         `}
       </style>
 
-      {/* الحاوية الرئيسية مع كلاس الخلفية المتحركة */}
       <div 
         className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden animated-gradient-bg" 
         dir="rtl" 
         style={{ fontFamily: '"Times New Roman", "Traditional Arabic", serif' }}
       >
-        
-        {/* أشكال هندسية ناعمة في الخلفية (دوائر مموهة) */}
         <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-[#0D9488] rounded-full mix-blend-multiply filter blur-[120px] opacity-20 animate-pulse" style={{ animationDuration: '8s' }}></div>
         <div className="absolute bottom-[-10%] left-[-10%] w-[30rem] h-[30rem] bg-[#38BDF8] rounded-full mix-blend-multiply filter blur-[150px] opacity-20 animate-pulse" style={{ animationDuration: '12s' }}></div>
 
-        {/* المحتوى الرئيسي (فورم الدخول) */}
         <div className="w-full max-w-[460px] relative z-10">
-          
           <TakhatobHeader />
-
           <TakhatobLoginForm 
             email={email} setEmail={setEmail} 
             password={password} setPassword={setPassword}
@@ -111,7 +117,6 @@ export default function LoginPage() {
             isLoading={isLoading} error={error} formErrors={formErrors}
             handleInputChange={handleInputChange} handleKeyPress={handleKeyPress} handleLogin={handleLogin} 
           />
-
           <TakhatobFooter />
         </div>
       </div>

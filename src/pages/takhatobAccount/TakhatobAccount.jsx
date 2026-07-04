@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext'; 
+import { supabase } from '../../supabase'; // استدعاء قاعدة البيانات
 
 // استيراد المكونات الفرعية
 import AccountHeader from './components/AccountHeader';
@@ -12,38 +13,69 @@ import SecurityBanner from './components/SecurityBanner';
 
 const TakhatobAccount = () => {
     const [isPageLoaded, setIsPageLoaded] = useState(false);
-    const [therapistData, setTherapistData] = useState(null);
+    const [therapistData, setTherapistData] = useState({});
     const [loading, setLoading] = useState(true);
 
     const navigate = useNavigate();
-    const { logout } = useAuth();
+    const { user, logout } = useAuth();
 
-    // Effect for Animation
     useEffect(() => {
-        if (!loading) {
-            const timer = setTimeout(() => setIsPageLoaded(true), 50);
-            return () => clearTimeout(timer);
-        }
-    }, [loading]);
+        const fetchProfile = async () => {
+            if (!user) return;
+            try {
+                // جلب بيانات البروفايل من Supabase
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .maybeSingle();
 
-    // محاكاة جلب البيانات الوهمية
-    useEffect(() => {
-        const fetchFakeData = () => {
-            setTimeout(() => {
-                setTherapistData({
-                    name: 'أ/ الاء بليغ',
-                    username: 'alaa.baligh',
-                    address: 'سوهاج - شارع 15',
-                    contactNumber: '010 1234 5678',
-                    email: 'alaa@takhatob.com',
-                    centerName: 'مركز نُطق للتخاطب وتنمية المهارات'
-                });
+                if (error) throw error;
+
+                if (data) {
+                    setTherapistData({
+                        doctor_name: data.doctor_name,
+                        phone: data.phone,
+                        address: data.address,
+                        clinic_name: data.clinic_name,
+                        avatar_url: data.avatar_url,
+                        email: user.email
+                    });
+                } else {
+                    // لو أول مرة يفتح الحساب ومفيش صف في الداتا بيز، بننشئه
+                    await supabase.from('profiles').insert([{ id: user.id }]);
+                    setTherapistData({ email: user.email });
+                }
+            } catch (error) {
+                console.error(error);
+                toast.error("حدث خطأ في تحميل البيانات");
+            } finally {
                 setLoading(false);
-            }, 800);
+                setTimeout(() => setIsPageLoaded(true), 50);
+            }
         };
 
-        fetchFakeData();
-    }, []);
+        fetchProfile();
+    }, [user]);
+
+    // الدالة السحرية اللي بتحدث أي حقل في الداتا بيز
+    const handleUpdateProfile = async (column, value) => {
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ [column]: value })
+                .eq('id', user.id);
+
+            if (error) throw error;
+            
+            // تحديث الواجهة فوراً
+            setTherapistData(prev => ({ ...prev, [column]: value }));
+            toast.success("تم تحديث البيانات بنجاح");
+        } catch (error) {
+            toast.error("حدث خطأ أثناء الحفظ");
+            console.error(error);
+        }
+    };
 
     const handleLogout = () => {
         logout(); 
@@ -66,17 +98,21 @@ const TakhatobAccount = () => {
                     <AccountHeader />
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* هنحدث ده في الخطوة الجاية */}
                         <ProfileCard 
-                            displayName={therapistData?.name} 
+                            displayName={therapistData?.doctor_name} 
                             displayAddress={therapistData?.address} 
-                            centerName={therapistData?.centerName}
+                            centerName={therapistData?.clinic_name}
+                            avatarUrl={therapistData?.avatar_url}
                             onLogout={handleLogout} 
+                            onUpdate={handleUpdateProfile} 
                         />
 
                         <BasicInfo 
-                            displayUsername={therapistData?.username} 
-                            displayPhone={therapistData?.contactNumber} 
+                            displayUsername={therapistData?.doctor_name} 
+                            displayPhone={therapistData?.phone} 
                             displayEmail={therapistData?.email} 
+                            onUpdate={handleUpdateProfile} 
                         />
                     </div>
 

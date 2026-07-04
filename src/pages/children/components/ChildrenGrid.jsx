@@ -1,8 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FolderOpen, Search, X, UserCircle2, Activity, CalendarClock, ChevronDown } from 'lucide-react';
+import { FolderOpen, Search, X, UserCircle2, Activity, CalendarClock, ChevronDown, Edit2 } from 'lucide-react';
 
-const ChildrenGrid = ({ childrenData, filteredChildren, visibleCount, searchTerm, clearSearch, handleLoadMore }) => {
+const ChildrenGrid = ({ childrenData, filteredChildren, visibleCount, searchTerm, clearSearch, handleLoadMore, onEditClick }) => {
   const navigate = useNavigate();
 
   if (childrenData.length === 0) {
@@ -43,14 +43,27 @@ const ChildrenGrid = ({ childrenData, filteredChildren, visibleCount, searchTerm
 
               <div className="flex justify-between items-start mb-6 relative z-10">
                 <div className="bg-gray-50 border border-gray-200 px-3 py-1 rounded-lg">
-                   <span className="text-[10px] font-bold text-gray-500 font-mono">ID: {child.id}</span>
+                   <span className="text-[10px] font-bold text-gray-500 font-mono">ID: {child.id.substring(0,8)}...</span>
                 </div>
+                
+                {/* زر التعديل الجديد */}
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onEditClick(child); }}
+                  className="bg-white hover:bg-teal-50 p-2 rounded-xl text-[#0D9488] shadow-sm border border-gray-100 transition-colors outline-none cursor-pointer z-20"
+                  title="تعديل بيانات الطفل"
+                >
+                   <Edit2 className="w-4 h-4" />
+                </button>
               </div>
 
               <div className="flex flex-col gap-4 relative z-10 mb-6 flex-1">
                  <div className="flex items-center gap-3 bg-teal-50/50 p-3 rounded-xl border border-teal-50">
-                    <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
-                       <UserCircle2 className="w-5 h-5 text-[#0D9488]" />
+                    <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center shrink-0 overflow-hidden border border-teal-100/50">
+                       {child.avatarUrl ? (
+                         <img src={child.avatarUrl} alt={child.fullName} className="w-full h-full object-cover" />
+                       ) : (
+                         <UserCircle2 className="w-5 h-5 text-[#0D9488]" />
+                       )}
                     </div>
                     <div className="flex flex-col">
                        <span className="text-[10px] font-bold text-[#64748B]">اسم الطفل</span>

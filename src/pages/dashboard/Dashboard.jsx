@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import DashboardHeader from './components/DashboardHeader';
 import StatCard from './components/StatCard';
 import { Users, CalendarClock, BellRing, Loader2 } from 'lucide-react';
+import { supabase } from '../../supabase'; 
+import { useAuth } from '../../context/AuthContext'; 
 
 const Dashboard = () => {
+    const { user } = useAuth(); 
     const [isPageLoaded, setIsPageLoaded] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // بيانات وهمية (Fake Data) للداشبورد
     const [dashboardData, setDashboardData] = useState({
         totalChildren: 0,
         todaySessions: 0,
@@ -17,28 +19,87 @@ const Dashboard = () => {
     });
 
     useEffect(() => {
-        // محاكاة تحميل البيانات من السيرفر
-        const fetchFakeData = () => {
-            setTimeout(() => {
+        const fetchRealData = async () => {
+            if (!user) return;
+
+            try {
+                // 1. جلب بيانات العيادة والأخصائي
+                const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('doctor_name, clinic_name, address, avatar_url')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                // 2. حساب إجمالي عدد الأطفال
+                const { count: patientsCount } = await supabase
+                    .from('patients')
+                    .select('*', { count: 'exact', head: true });
+
+                // 3. حساب جلسات اليوم
+                // نظبط التايم زون عشان يجيب تاريخ النهاردة بدقة
+                const offset = new Date().getTimezoneOffset() * 60000;
+                const todayStr = (new Date(Date.now() - offset)).toISOString().split('T')[0];
+                
+                const { count: sessionsCount } = await supabase
+                    .from('sessions')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('session_date', todayStr);
+
+                // 4. خوارزمية حساب التنبيهات (باقات قاربت على الانتهاء)
+                const { data: packagesData } = await supabase
+                    .from('packages')
+                    .select('patient_id, total_sessions');
+                
+                const { data: consumedSessions } = await supabase
+                    .from('sessions')
+                    .select('patient_id')
+                    .in('status', ['completed', 'absent']);
+
+                let alertsCount = 0;
+                
+                if (packagesData && consumedSessions) {
+                    // تجميع عدد الجلسات المستهلكة لكل طفل
+                    const consumedMap = {};
+                    consumedSessions.forEach(session => {
+                        consumedMap[session.patient_id] = (consumedMap[session.patient_id] || 0) + 1;
+                    });
+
+                    // مقارنة إجمالي الباقة بالمستهلك
+                    packagesData.forEach(pkg => {
+                        const consumed = consumedMap[pkg.patient_id] || 0;
+                        const remaining = pkg.total_sessions - consumed;
+                        // لو باقي جلستين أو أقل (ولسه الباقة مخلصتش تماماً) اعتبره تنبيه
+                        if (remaining <= 2 && remaining > 0) {
+                            alertsCount++;
+                        }
+                    });
+                }
+
+                // 5. تحديث الواجهة بالبيانات الحقيقية
                 setDashboardData({
-                    totalChildren: 45, // عدد الأطفال
-                    todaySessions: 8,  // جلسات اليوم
-                    alerts: 3,         // التنبيهات (باقات قربت تخلص)
+                    totalChildren: patientsCount || 0,
+                    todaySessions: sessionsCount || 0,
+                    alerts: alertsCount,
                     therapistData: {
-                        name: 'أ/ الاء بليغ ',
-                        centerName: 'مركز نُطق للتخاطب وتنمية المهارات',
-                        address: 'سوهاج - شارع 15'
+                        name: profileData?.doctor_name || 'أخصائي التخاطب',
+                        centerName: profileData?.clinic_name || 'إعدادات العيادة غير مكتملة',
+                        address: profileData?.address || '',
+                        avatar_url: profileData?.avatar_url || null
                     }
                 });
+
+            } catch (error) {
+                console.error("خطأ في جلب بيانات الداشبورد:", error);
+            } finally {
                 setLoading(false);
                 setIsPageLoaded(true);
-            }, 800); // تأخير 800 ملي ثانية لمحاكاة التحميل
+            }
         };
 
-        fetchFakeData();
-    }, []);
+        fetchRealData();
+    }, [user]);
 
-    // الكروت الإحصائية الثلاثة التي طلبتها
+    // الكروت الإحصائية
     const stats = [
         { 
             id: 1, 
@@ -50,8 +111,8 @@ const Dashboard = () => {
                 </span>
             ), 
             icon: Users, 
-            color: 'bg-[#0D9488]', // اللون التركواز
-            link: '/search' 
+            color: 'bg-[#0D9488]', 
+            link: '/children' // تم ربط الكارت بصفحة الأطفال
         },
         { 
             id: 2, 
@@ -63,7 +124,8 @@ const Dashboard = () => {
                 </span>
             ),
             icon: CalendarClock, 
-            color: 'bg-indigo-600' 
+            color: 'bg-indigo-600',
+            link: '/children' // ممكن نوجهه لصفحة أو تقرير مخصص لجلسات اليوم لاحقاً
         },
         { 
             id: 3, 
@@ -75,21 +137,19 @@ const Dashboard = () => {
                 </span>
             ),
             icon: BellRing, 
-            color: 'bg-rose-500' 
+            color: 'bg-rose-500',
+            link: '/children' // توجيه لصفحة الأطفال لمراجعة الباقات
         },
     ];
 
     return (
-        // التعديل هنا: استخدام bg-transparent ليأخذ لون الخلفية من TakhatobLayout
         <div className="w-full font-sans bg-transparent" dir="rtl" style={{ minHeight: '100vh' }}>
             <div className={`p-4 md:p-8 w-full transition-all duration-500 ease-out transform ${isPageLoaded ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'}`}>
                 
                 <div className="max-w-7xl mx-auto w-full flex flex-col gap-6 md:gap-8 pb-10">
 
-                    {/* تمرير بيانات الأخصائي للـ Header */}
                     <DashboardHeader therapistData={dashboardData.therapistData} isLoading={loading} />
 
-                    {/* شبكة الكروت */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6 mt-2">
                         {stats.map(stat => {
                             const CardComponent = (
